@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Runtime crawl outputs
+urls.txt
+filtered_urls.txt
+seen_pages.txt
+seen_pdfs.txt
+
+# Data folders
+raw_documents/
+policies_raw/
+
+# OS
+.DS_Store
+Thumbs.db

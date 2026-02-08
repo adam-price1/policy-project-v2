@@ -1,329 +1,375 @@
-# PHASE 1 CODE REVIEW - DOCUMENT INDEX
+# Insurance Policy PDF Ingestion Pipeline – Phase 1
 
-**Project:** Insurance Policy PDF Ingestion Pipeline (Policy Check)  
-**Review Scope:** Phase 1 only (deterministic collection)  
-**Review Date:** 2026-02-08  
-**Status:** ✅ READY FOR IMPLEMENTATION
-
----
-
-## 📚 DOCUMENT GUIDE
-
-### Start Here (5 minutes)
-👉 **[QUICK_SUMMARY.md](QUICK_SUMMARY.md)**
-- Visual overview: by-the-numbers
-- Before/after comparison
-- 9 issues fixed at a glance
-- Deployment time estimate (5 min)
-- Read this first if you're in a hurry
+**Project:** PolicyCheck – Insurance Policy Data Ingestion  
+**Version:** 2 (Production-Ready)  
+**Status:** ✅ Phase 1 complete  
+**Last Updated:** 2026-02-08
 
 ---
 
-### For Decision Makers (10 minutes)
-👉 **[CODE_REVIEW_CHECKLIST.md](CODE_REVIEW_CHECKLIST.md)**
-- Critical issues table
-- Testing checklist
-- Deployment steps
-- Rollback procedure
-- Performance improvements summary
-- FAQ
+## Overview
+
+This is a **deterministic, auditable pipeline** for discovering, filtering, and ingesting insurance policy PDFs from official insurer websites. Phase 1 focuses on **reliable collection**, not interpretation.
+
+**Three-step pipeline:**
+1. **Crawl** — Discover PDFs from insurer sites
+2. **Filter** — Keep only real policies, reject junk
+3. **Ingest** — Download, validate, and store PDFs with metadata
 
 ---
 
-### For Implementers (20 minutes)
-👉 **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**
-- Detailed explanation of EVERY change
-- Original code → Fixed code for each issue
-- Reasoning for each fix
-- Impact analysis
-- Testing recommendations
-- Migration path
+## Key Features
+
+### Crawling (`policy_url_crawler.py`)
+- ✅ Recursive crawl from seed insurer URLs
+- ✅ Domain-boundary enforcement (stay on same insurer site)
+- ✅ Path-based filtering (allowed/deny keywords)
+- ✅ Resume-safe (tracks seen pages and PDFs)
+- ✅ Polite crawling (0.5s delay between requests)
+
+### Filtering (`policy_url_filter.py`)
+- ✅ URL-based classification using keyword lists
+- ✅ Whitelist keywords (must have: policy, pds, product-disclosure, etc.)
+- ✅ Blacklist keywords (must not have: form, claim, guide, etc.)
+- ✅ Output audit trail (rejected URLs saved)
+- ✅ Simple, deterministic logic (no ML/heuristics)
+
+### Ingestion (`admin_pdf_ingestor_v2.py`)
+- ✅ Sequential downloads (safe, predictable)
+- ✅ Resume-safe (skips existing PDFs)
+- ✅ Metadata JSON per file (URL, timestamp, status)
+- ✅ Simple error logging (writes to console)
+- ✅ Placeholder fields for future classification
 
 ---
 
-### For Deep Review (45 minutes)
-👉 **[PHASE1_CODE_REVIEW.md](PHASE1_CODE_REVIEW.md)**
-- High-level assessment
-- File-by-file review
-- All 9 issues identified
-- Critical vs high vs medium priority
-- Change rationale
+## Quick Start
 
----
-
-## 🔧 UPDATED CODE FILES
-
-### Three Python Scripts Updated
-
-**1. [policy_url_crawler.py](policy_url_crawler.py)** (8 fixes)
-```
-Changes:
-✅ Domain normalization (www.example.com == example.com)
-✅ URL query string normalization (remove tracking params)
-✅ Seed file validation (exits if missing)
-✅ Configurable timeout (--timeout arg)
-✅ Better error handling (specific exceptions)
-✅ Content-Type case-insensitive validation
-✅ Better logging (HTTP codes, errors)
-✅ Sorted output (for consistent diffs)
-
-Impact: +10-20% URL coverage, -5-15% duplicates
+### 1. Install
+```bash
+pip install -r requirements.txt
 ```
 
-**2. [policy_url_filter.py](policy_url_filter.py)** (5 fixes)
+### 2. Crawl
+```bash
+python policy_url_crawler.py
 ```
-Changes:
-✅ Query string handling (extracts filename before check)
-✅ Input file validation (exits if missing)
-✅ Output write error handling
-✅ Better error messages (guides to next step)
-✅ Early exit with clear errors
+Output: `urls.txt` (all discovered PDFs)
 
-Impact: Recover 15-20% of real policies incorrectly rejected
+### 3. Filter
+```bash
+python policy_url_filter.py
 ```
+Output: 
+- `policy_urls.txt` (valid policies)
+- `filtered_out_urls.txt` (rejected, for audit)
 
-**3. [admin_pdf_ingestor_v2.py](admin_pdf_ingestor_v2.py)** (11 fixes)
+### 4. Ingest
+```bash
+python admin_pdf_ingestor_v2.py
 ```
-Changes:
-✅ Thread-safe metadata writes (inside lock, prevents race condition)
-✅ Redirect tracking (logs final URL in metadata)
-✅ Session reuse (faster downloads, fewer connections)
-✅ Better PDF validation (handles empty responses)
-✅ Content-Length header check (prevents huge downloads)
-✅ Input file validation (exits if missing)
-✅ Better logging (duration, throughput, error context)
-✅ Specific exception handling (timeout vs connection)
-✅ Argument validation (--workers 1-64, etc.)
-✅ Failure instructions (how to retry)
-✅ Shared session across workers
+Output:
+- `raw_documents/` (downloaded PDFs)
+- `metadata/` (JSON metadata files)
 
-Impact: Thread-safe, faster, more traceable
-```
+### 5. Inspect Results
+```bash
+# View a metadata file
+cat metadata/policy_001.pdf.json | jq .
 
-**4. [requirements.txt](requirements.txt)**
-```
-Status: ✅ No change required
-Already correct (requests, beautifulsoup4)
+# Count downloads
+ls -1 raw_documents/*.pdf | wc -l
+
+# Check audit trail
+cat filtered_out_urls.txt | head
 ```
 
 ---
 
-## 🎯 QUICK FACTS
+## Design Principles
 
-| Question | Answer |
-|----------|--------|
-| **Will my data be lost?** | No. All files preserved. |
-| **Is it backward compatible?** | Yes. 100% compatible. |
-| **How long to deploy?** | 5 minutes (backup, copy, test). |
-| **Can I rollback?** | Yes. Simple file restore. |
-| **Do I need to re-crawl?** | No. Existing state preserved. |
-| **What's the risk level?** | LOW. Improvements, no breaking changes. |
-| **Is it ready for production?** | Yes. ✅ APPROVED |
+### Deterministic
+- Same inputs always produce same outputs
+- No randomization, no external APIs
+- Keyword matching only (Phase 1)
+
+### Simple & Understandable
+- Three separate scripts (clear separation)
+- No complex architectures
+- Easy to debug and extend
+
+### Resume-Safe
+- All scripts safe to re-run
+- State tracked in text files
+- No data loss on failure
+
+### Auditable
+- Every URL tracked (urls.txt, filtered_out_urls.txt)
+- Metadata for every PDF
+- Clear rejection reasons
 
 ---
 
-## 📋 ISSUE PRIORITY MATRIX
+## Directory Structure
 
-### CRITICAL (Must Fix Immediately)
 ```
-[1] Metadata race condition (line 176, ingestor)
-    → Data corruption at 16+ workers
-    
-[2] Query strings break filter (line 88, filter)
-    → Rejects 15-20% of valid policies
-```
-
-### HIGH (Should Fix Before Phase 2)
-```
-[3] Domain comparison broken (line 93, crawler)
-    → Misses 10-20% of crawled pages
-    
-[4] URL deduplication incomplete (line 164, crawler)
-    → 5-15% duplicate downloads
-    
-[5] Redirects not tracked (line 102, ingestor)
-    → Audit trail incomplete
-```
-
-### MEDIUM (Improves Robustness)
-```
-[6] PDF signature check crashes on empty (line 112, ingestor)
-[7] Seed file missing = silent crash (line 82, crawler)
-[8] Session inefficient (line 73, ingestor)
-[9] No input validation (all files)
+├── policy_url_crawler.py      # Step 1: Discover PDFs
+├── policy_url_filter.py       # Step 2: Filter to real policies
+├── admin_pdf_ingestor_v2.py   # Step 3: Download & store
+├── seed_insurers.txt          # Starting URLs (edit this)
+├── requirements.txt           # Dependencies
+│
+├── urls.txt                   # All discovered PDFs (generated)
+├── seen_pages.txt             # Crawled pages (for resume)
+├── seen_pdfs.txt              # Discovered PDFs (for resume)
+├── policy_urls.txt            # Filtered, valid policies
+├── filtered_out_urls.txt      # Rejected URLs (audit trail)
+│
+├── raw_documents/             # Downloaded PDFs
+└── metadata/                  # JSON metadata files
 ```
 
 ---
 
-## 🚀 DEPLOYMENT FLOW
+## Configuration
 
-```
-1. Read QUICK_SUMMARY.md (5 min)
-   ↓
-2. Skim IMPLEMENTATION_SUMMARY.md (10 min)
-   ↓
-3. Follow CODE_REVIEW_CHECKLIST.md (20 min)
-   ↓
-4. Run manual tests (10 min)
-   ↓
-5. Deploy updated files (5 min)
-   ↓
-6. Monitor logs (ongoing)
-   ↓
-7. If issues: use rollback procedure
+### Crawler (`policy_url_crawler.py`)
+
+Edit these at the top of the file:
+
+```python
+MAX_PAGES_PER_DOMAIN = 1000      # Max pages to crawl per insurer
+REQUEST_DELAY = 0.5              # Seconds between requests (politeness)
+TIMEOUT = 10                     # Request timeout
 ```
 
----
+Path filtering keywords (edit to tune):
+```python
+ALLOWED_PATH_KEYWORDS = [        # Must contain at least one
+    "/insurance", "/policy", "/policies", "/documents", 
+    "/pds", "/product-disclosure"
+]
 
-## 🔍 WHAT TO LOOK FOR
+DENY_PATH_KEYWORDS = [           # Must not contain any
+    "/about/", "/careers/", "/news/", "/media/", 
+    "/blog/", "/form", "/claim", ...
+]
+```
 
-### In `policy_url_crawler.py`
-- Domain normalization function (new normalize_domain)
-- URL normalization function (new normalize_url)
-- Seed file validation with clear errors
-- Configurable timeout parameter
+### Filter (`policy_url_filter.py`)
 
-### In `policy_url_filter.py`
-- extract_pdf_path function (new)
-- Query string handling before .endswith() check
-- Input/output validation with clear errors
+Edit keywords to tune filtering:
 
-### In `admin_pdf_ingestor_v2.py`
-- JSON write inside lock (line ~180)
-- Shared session parameter (session passed to Downloader)
-- final_url tracking in metadata
-- Better exception handling with specific types
-- Duration and throughput logging
+```python
+KEEP_KEYWORDS = [                # Must contain at least one
+    "policy", "pds", "product-disclosure", "tmd", "policy-wording"
+]
 
----
+DROP_KEYWORDS = [                # Must not contain any
+    "form", "application", "claim", "guide", "fsg", 
+    "brochure", "fact-sheet", "statement", "authority"
+]
+```
 
-## 📞 HOW TO USE THESE DOCUMENTS
+### Ingestor (`admin_pdf_ingestor_v2.py`)
 
-### Scenario 1: "I have 10 minutes"
-→ Read [QUICK_SUMMARY.md](QUICK_SUMMARY.md)
+Edit input/output directories:
 
-### Scenario 2: "I need to deploy this"
-→ Read [CODE_REVIEW_CHECKLIST.md](CODE_REVIEW_CHECKLIST.md)
-
-### Scenario 3: "I need to explain these changes"
-→ Read [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)
-
-### Scenario 4: "I need to understand every detail"
-→ Read [PHASE1_CODE_REVIEW.md](PHASE1_CODE_REVIEW.md)
-
-### Scenario 5: "Something broke, I need to understand the fix"
-→ Find the issue in [CODE_REVIEW_CHECKLIST.md](CODE_REVIEW_CHECKLIST.md) Issue Priority Matrix
-→ Look up the fix in [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)
-
-### Scenario 6: "I just want the code"
-→ Use these files:
-- [policy_url_crawler.py](policy_url_crawler.py)
-- [policy_url_filter.py](policy_url_filter.py)
-- [admin_pdf_ingestor_v2.py](admin_pdf_ingestor_v2.py)
+```python
+INPUT_FILE = "policy_urls.txt"   # Read URLs from this file
+RAW_DIR = "raw_documents"        # Save PDFs here
+META_DIR = "metadata"            # Save JSON metadata here
+```
 
 ---
 
-## ✨ KEY IMPROVEMENTS
+## Seed Insurers
 
-| Area | Before | After |
-|------|--------|-------|
-| **Data Quality** | Duplicates, lost URLs | Clean, deduplicated, traceable |
-| **Reliability** | Crashes on edge cases | Graceful handling everywhere |
-| **Observability** | Poor error messages | Clear, actionable errors |
-| **Performance** | Slow (many connections) | Fast (session reuse) |
-| **Auditability** | Lost metadata | Complete audit trail |
-| **Thread Safety** | Race condition bug | Proper locking |
-| **UX** | Silent failures | Clear messages + guidance |
+Edit `seed_insurers.txt` with insurer homepages:
 
----
-
-## 🎓 LEARNING RESOURCES
-
-If you want to understand the patterns used:
-
-**Thread Safety:**
-- See: admin_pdf_ingestor_v2.py lines 139-145 (Stats class with Lock)
-- See: Worker function lines 173-191 (inside lock)
-
-**URL Normalization:**
-- See: policy_url_crawler.py lines 99-135 (normalize_url function)
-- See: policy_url_filter.py lines 40-57 (extract_pdf_path function)
-
-**Proper Error Handling:**
-- See: policy_url_crawler.py lines 177-187 (specific exceptions)
-- See: admin_pdf_ingestor_v2.py lines 138-157 (exception types)
-
-**Graceful Degradation:**
-- See: admin_pdf_ingestor_v2.py lines 117-124 (empty response handling)
-- See: policy_url_crawler.py lines 82-93 (seed validation)
+```
+https://www.qbe.com/au
+https://www.aami.com.au
+https://www.suncorp.com.au
+https://www.allianz.com.au
+https://www.iag.com.au
+https://www.nrma.com.au
+https://www.aa.co.nz
+https://www.ami.co.nz
+https://www.vero.co.nz
+https://www.tower.co.nz
+https://fmgnz.co.nz
+https://www.state.co.nz
+https://www.aviva.co.uk
+https://www.zurich.co.uk
+https://www.qbe.com/uk
+```
 
 ---
 
-## 📊 STATISTICS
+## Metadata Format
 
-| Metric | Value |
-|--------|-------|
-| Files reviewed | 8 |
-| Python files with changes | 3 |
-| Issues identified | 9 |
-| Critical issues | 2 |
-| High-priority issues | 3 |
-| Medium-priority issues | 4 |
-| Lines of code added | ~200 |
-| Lines of code removed | ~20 |
-| Net change | +180 |
-| Backward compatibility | 100% |
-| Breaking changes | 0 |
-| Time to understand changes | 10-45 min (depending on depth) |
-| Time to deploy | 5 minutes |
-| Risk level | LOW |
+Each downloaded PDF gets a JSON metadata file:
 
----
+```json
+{
+  "file_name": "policy_001.pdf",
+  "source_url": "https://example.com/download/policy.pdf",
+  "download_date": "2026-02-08T14:32:15.123456+00:00",
+  "country": "Unknown",
+  "insurer": "Unknown",
+  "insurance_line": "Unknown",
+  "product_name": "Unknown",
+  "status": "needs_classification"
+}
+```
 
-## ✅ SIGN-OFF
-
-**Code Review Status:** ✅ APPROVED
-
-**Ready for:** ✅ Immediate deployment to production
-
-**Recommendation:** Deploy ASAP to fix critical issues and improve data quality
-
-**Next Steps:** After Phase 1 completion, plan Phase 2 (country-specific handling, deduplication logic, AI-assisted extraction)
+Placeholder fields (`country`, `insurer`, etc.) are for **Phase 2** when we add classification logic.
 
 ---
 
-## 📝 FILES INCLUDED
+## What's NOT Included (Phase 1 Scope)
 
-### Documents (Read in Order)
-1. ✅ QUICK_SUMMARY.md (this guide)
-2. ✅ PHASE1_CODE_REVIEW.md
-3. ✅ IMPLEMENTATION_SUMMARY.md
-4. ✅ CODE_REVIEW_CHECKLIST.md
+❌ Parallel downloads (Phase 2)  
+❌ Deduplication (Phase 2)  
+❌ PDF parsing/OCR (Phase 2)  
+❌ AI classification (Phase 2)  
+❌ Metadata extraction (Phase 2)  
+❌ Database storage (Phase 2)  
 
-### Code Files (Drop-in Replacements)
-1. ✅ policy_url_crawler.py
-2. ✅ policy_url_filter.py
-3. ✅ admin_pdf_ingestor_v2.py
-4. ✅ requirements.txt (unchanged)
+Phase 1 is **collection only** — build a trusted dataset first.
 
 ---
 
-## 🤝 SUPPORT
+## Troubleshooting
 
-**Questions?**
-- Technical details → IMPLEMENTATION_SUMMARY.md
-- Deployment help → CODE_REVIEW_CHECKLIST.md
-- Quick overview → QUICK_SUMMARY.md
-- Deep dive → PHASE1_CODE_REVIEW.md
+### "ERROR: Seed file not found"
+Create `seed_insurers.txt` with insurer URLs.
 
-**Found an issue?**
-- Check CODE_REVIEW_CHECKLIST.md rollback section
-- Restore from backups: `cp *.py.bak *.py`
-- No data loss; all input files preserved
+### "Crawling is very slow"
+- Check `REQUEST_DELAY` (default 0.5s is polite)
+- Increase `MAX_PAGES_PER_DOMAIN` (default 1000)
+- Increase `TIMEOUT` if servers respond slowly
+
+### "No PDFs found"
+- Check seed URLs are valid
+- Verify PDFs exist at those sites
+- Review `ALLOWED_PATH_KEYWORDS` (too restrictive?)
+- Check `DENY_PATH_KEYWORDS` (blocking PDFs?)
+
+### "Filter is rejecting too many URLs"
+- Review `KEEP_KEYWORDS` (need more variations?)
+- Review `DROP_KEYWORDS` (too aggressive?)
+- Check `filtered_out_urls.txt` to see what's rejected
+
+### "Metadata files not created"
+- Check `metadata/` directory exists
+- Verify write permissions
+- Check console for error messages
 
 ---
 
-**Review Complete**  
-**All files ready for implementation**  
-**Questions? See IMPLEMENTATION_SUMMARY.md or CODE_REVIEW_CHECKLIST.md**
+## Performance Notes
 
+### Single-Domain Crawl
+- **Default settings:** ~2-5 PDFs/min per insurer (polite)
+- **Fast mode:** Reduce `REQUEST_DELAY` to 0.1s
+- **Slow network:** Increase `TIMEOUT` to 30s
+
+### Filtering
+- All URLs filtered in <1 second (simple keyword matching)
+- Output written line-by-line (safe for large files)
+
+### Ingestion
+- **Default:** ~1-2 PDFs/min (sequential, safe)
+- **Network:** Depends on PDF size and connection
+- **No parallelism yet** (Phase 2 feature)
+
+---
+
+## Resume & Recovery
+
+### After Crawler Interruption
+```bash
+# Continue crawling (skips seen_pages.txt)
+python policy_url_crawler.py
+```
+
+### After Filter Interruption
+```bash
+# Re-run filter (regenerates output files)
+python policy_url_filter.py
+```
+
+### After Ingestor Interruption
+```bash
+# Continue ingestion (skips existing PDFs)
+python admin_pdf_ingestor_v2.py
+```
+
+All scripts are safe to re-run at any time.
+
+---
+
+## Data Outputs
+
+### `urls.txt`
+All discovered PDF URLs (one per line).
+
+### `seen_pages.txt`
+All crawled pages (for resume-safety).
+
+### `seen_pdfs.txt`
+All discovered PDFs (for deduplication).
+
+### `policy_urls.txt`
+Filtered, valid policy URLs only.
+
+### `filtered_out_urls.txt`
+Rejected URLs (audit trail for review).
+
+### `raw_documents/`
+Downloaded PDF files.
+
+### `metadata/`
+JSON metadata files (one per PDF).
+
+---
+
+## Next Steps
+
+### Phase 2 (Planned)
+- Parallel downloads for speed
+- Deduplication (same policy, different versions)
+- PDF parsing to extract metadata
+- Basic policy type classification
+
+### Phase 3 (Future)
+- AI-assisted extraction
+- Policy comparison
+- Risk detection
+- Country-specific handling
+
+---
+
+## Notes
+
+- **Dependencies:** `requests`, `beautifulsoup4`
+- **Python version:** 3.7+
+- **File formats:** UTF-8 text files, JSON metadata
+- **Determinism:** Same runs always produce same results
+- **Safety:** No data is ever deleted, only appended
+
+---
+
+## Support
+
+See included documentation:
+- **QUICK_SUMMARY.md** — High-level changes
+- **PHASE1_CODE_REVIEW.md** — Detailed review
+- **IMPLEMENTATION_SUMMARY.md** — Change explanations
+- **CODE_REVIEW_CHECKLIST.md** — Testing & deployment
+
+---
+
+**Version 2 is production-ready. Start with `seed_insurers.txt`, then run the three scripts in order.**
